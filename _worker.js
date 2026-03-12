@@ -167,6 +167,57 @@ async function fetchAndParseWetest(url) {
     }
 }
 
+// 获取 uouin Cloudflare 优选IP
+async function fetchUouinIPs() {
+
+    const url = "https://api.uouin.com/cloudflare.html";
+
+    try {
+
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0",
+                "Cache-Control": "no-cache"
+            }
+        });
+
+        if (!response.ok) return [];
+
+        const html = await response.text();
+
+        const results = [];
+
+        const rows = html.split("<tr>");
+
+        rows.forEach(row => {
+
+            const matchISP = row.match(/<td>(电信|联通|移动|多线)<\/td>/);
+            const matchIP = row.match(/<td>(\d+\.\d+\.\d+\.\d+)<\/td>/);
+
+            if (matchISP && matchIP) {
+
+                results.push({
+                    isp: matchISP[1],
+                    ip: matchIP[1],
+                    port: 443
+                });
+
+            }
+
+        });
+
+        return results;
+
+    } catch (error) {
+
+        console.log("uouin ip获取失败", error);
+
+        return [];
+
+    }
+
+}
+
 // 整理成数组
 async function 整理成数组(内容) {
     var 替换后的内容 = 内容.replace(/[	"'\r\n]+/g, ',').replace(/,+/g, ',');
@@ -585,15 +636,53 @@ async function handleSubscriptionRequest(request, user, customDomain, piu, ipv4E
     }
 
     // 优选IP
+    // if (epi) {
+    //     try {
+    //         const dynamicIPList = await fetchDynamicIPs(ipv4Enabled, ipv6Enabled, ispMobile, ispUnicom, ispTelecom);
+    //         if (dynamicIPList.length > 0) {
+    //             await addNodesFromList(dynamicIPList);
+    //         }
+    //     } catch (error) {
+    //         console.error('获取动态IP失败:', error);
+    //     }
+    // }
+    // 优选IP
     if (epi) {
+    
         try {
-            const dynamicIPList = await fetchDynamicIPs(ipv4Enabled, ipv6Enabled, ispMobile, ispUnicom, ispTelecom);
-            if (dynamicIPList.length > 0) {
-                await addNodesFromList(dynamicIPList);
+    
+            const dynamicIPList = await fetchDynamicIPs(
+                ipv4Enabled,
+                ipv6Enabled,
+                ispMobile,
+                ispUnicom,
+                ispTelecom
+            );
+    
+            const uouinIPs = await fetchUouinIPs();
+    
+            let allIPs = [
+                ...dynamicIPList,
+                ...uouinIPs
+            ];
+    
+            // 防止Worker节点过多
+            const MAX_IP_LIMIT = 200;
+    
+            allIPs = allIPs.slice(0, MAX_IP_LIMIT);
+    
+            if (allIPs.length > 0) {
+    
+                await addNodesFromList(allIPs);
+    
             }
+    
         } catch (error) {
-            console.error('获取动态IP失败:', error);
+    
+            console.error("获取优选IP失败:", error);
+    
         }
+    
     }
 
     // GitHub优选 / 优选API
